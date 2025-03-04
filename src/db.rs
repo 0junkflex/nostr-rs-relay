@@ -197,16 +197,27 @@ pub async fn db_writer(
         }
 
         // Set to none until balance is got from db
-        // Will stay none if user in whitelisted and does not have to pay to post
-        // When pay to relay is enabled the whitelist is not a list of who can post
-        // It is a list of who can post for free
+        // Will stay none if user is whitelisted and does not have to post.
+        // When pay to relay is enabled the whitelist is not a list of who can post;
+        // it is a list of who can post for free.
         let mut user_balance: Option<u64> = None;
         if !pay_to_relay_enabled {
-            // check if this event is authorized.
+            // Check if this event is authorized.
             if let Some(allowed_addrs) = whitelist {
-                // TODO: incorporate delegated pubkeys
-                // if the event address is not in allowed_addrs.
-                if !allowed_addrs.contains(&event.pubkey) {
+                // Check if the signing pubkey is allowed.
+                let signing_pubkey_allowed = allowed_addrs.contains(&event.pubkey);
+                // Check if any "p" tag contains an allowed pubkey.
+                let tag_pubkey_allowed = event
+                    .tag_values_by_name("p")
+                    .iter()
+                    .any(|tag_pubkey| allowed_addrs.contains(tag_pubkey));
+                // Check if a delegated pubkey (if present) is allowed.
+                let delegated_allowed = event
+                    .delegated_by
+                    .as_ref()
+                    .map_or(false, |d| allowed_addrs.contains(d));
+
+                if !signing_pubkey_allowed && !tag_pubkey_allowed && !delegated_allowed {
                     debug!(
                         "rejecting event: {}, unauthorized author",
                         event.get_event_id_prefix()
